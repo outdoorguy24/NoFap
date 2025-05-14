@@ -1,15 +1,13 @@
 // DOM elements
 const currentStreakEl = document.getElementById('current-streak');
-const bestStreakEl = document.getElementById('best-streak');
 const calendarEl = document.getElementById('calendar');
-const markSuccessBtn = document.getElementById('mark-success');
-const resetBtn = document.getElementById('reset');
 
 // Data structure
 let userData = {
     currentStreak: 0,
     bestStreak: 0,
     successDays: [],
+    missedDays: [],
     lastUpdated: null
 };
 
@@ -21,6 +19,14 @@ function loadData() {
         
         // Convert date strings back to Date objects
         userData.successDays = userData.successDays.map(dateStr => new Date(dateStr));
+        
+        // Initialize missedDays array if it doesn't exist
+        if (!userData.missedDays) {
+            userData.missedDays = [];
+        } else {
+            userData.missedDays = userData.missedDays.map(dateStr => new Date(dateStr));
+        }
+        
         if (userData.lastUpdated) {
             userData.lastUpdated = new Date(userData.lastUpdated);
         }
@@ -50,11 +56,58 @@ function isSuccessDay(date) {
     return userData.successDays.some(successDate => isSameDay(successDate, date));
 }
 
+// Check if a date is in the missedDays array
+function isMissedDay(date) {
+    return userData.missedDays.some(missedDate => isSameDay(missedDate, date));
+}
+
+// Show modal with message
+function showModal(message) {
+    // Create modal elements
+    const modalOverlay = document.createElement('div');
+    modalOverlay.className = 'modal-overlay';
+    
+    const modalContent = document.createElement('div');
+    modalContent.className = 'modal-content';
+    
+    const modalMessage = document.createElement('p');
+    modalMessage.textContent = message;
+    
+    const closeButton = document.createElement('button');
+    closeButton.className = 'modal-close';
+    closeButton.textContent = 'I Understand';
+    
+    // Assemble modal
+    modalContent.appendChild(modalMessage);
+    modalContent.appendChild(closeButton);
+    modalOverlay.appendChild(modalContent);
+    document.body.appendChild(modalOverlay);
+    
+    // Add close functionality
+    closeButton.addEventListener('click', () => {
+        document.body.removeChild(modalOverlay);
+    });
+    
+    // Also close when clicking outside
+    modalOverlay.addEventListener('click', (e) => {
+        if (e.target === modalOverlay) {
+            document.body.removeChild(modalOverlay);
+        }
+    });
+    
+    // Prevent scrolling while modal is open
+    document.body.style.overflow = 'hidden';
+    
+    // Reset overflow when modal closes
+    closeButton.addEventListener('click', () => {
+        document.body.style.overflow = '';
+    });
+}
+
 // Update the UI
 function updateUI() {
-    // Update streak counters
+    // Update streak counter
     currentStreakEl.textContent = userData.currentStreak;
-    bestStreakEl.textContent = userData.bestStreak;
     
     // Generate calendar for the current month
     generateCalendar();
@@ -68,35 +121,20 @@ function generateCalendar() {
     const currentMonth = today.getMonth();
     const currentYear = today.getFullYear();
     
-    // Create day headers
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    dayNames.forEach(day => {
-        const dayHeader = document.createElement('div');
-        dayHeader.className = 'calendar-day day-header';
-        dayHeader.textContent = day.charAt(0);
-        
-        // Add hidden full day name for accessibility
-        const fullDaySpan = document.createElement('span');
-        fullDaySpan.className = 'sr-only';
-        fullDaySpan.textContent = day;
-        dayHeader.appendChild(fullDaySpan);
-        
-        calendarEl.appendChild(dayHeader);
-    });
+    // Add month header
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                         'July', 'August', 'September', 'October', 'November', 'December'];
     
-    // Get first day of month and total days
-    const firstDay = new Date(currentYear, currentMonth, 1);
+    const monthHeader = document.createElement('div');
+    monthHeader.className = 'month-header';
+    monthHeader.textContent = monthNames[currentMonth];
+    calendarEl.appendChild(monthHeader);
+    
+    // Get total days in the month
     const lastDay = new Date(currentYear, currentMonth + 1, 0);
     const totalDays = lastDay.getDate();
     
-    // Add empty cells for days before the first day of month
-    for (let i = 0; i < firstDay.getDay(); i++) {
-        const emptyDay = document.createElement('div');
-        emptyDay.className = 'calendar-day empty';
-        calendarEl.appendChild(emptyDay);
-    }
-    
-    // Add days of the month
+    // Add days of the month sequentially
     for (let day = 1; day <= totalDays; day++) {
         const date = new Date(currentYear, currentMonth, day);
         const dayEl = document.createElement('div');
@@ -107,42 +145,61 @@ function generateCalendar() {
         if (date <= today) {
             dayEl.classList.add('selectable');
             
-            // Add click event to toggle success status
+            // Add click event to toggle day status
             dayEl.addEventListener('click', () => {
-                toggleDaySuccess(date);
+                toggleDayStatus(date);
             });
+            
+            // Mark success days
+            if (isSuccessDay(date)) {
+                dayEl.classList.add('success');
+            }
+            // Mark missed days
+            else if (isMissedDay(date)) {
+                dayEl.classList.add('missed');
+            }
         }
         
         // Mark today
-        if (day === today.getDate()) {
+        if (day === today.getDate() && currentMonth === today.getMonth()) {
             dayEl.classList.add('today');
-        }
-        
-        // Mark success days
-        if (isSuccessDay(date)) {
-            dayEl.classList.add('success');
         }
         
         calendarEl.appendChild(dayEl);
     }
 }
 
-// Toggle success status for a specific day
-function toggleDaySuccess(date) {
+// Toggle day status (success, missed, or neither)
+function toggleDayStatus(date) {
     // Create a new date with time set to midnight to avoid time comparison issues
     const targetDate = new Date(date);
     targetDate.setHours(0, 0, 0, 0);
     
-    // Check if the date is already marked as successful
-    const existingIndex = userData.successDays.findIndex(d => isSameDay(d, targetDate));
+    // Check current status
+    const isSuccess = isSuccessDay(targetDate);
+    const isMissed = isMissedDay(targetDate);
     
-    if (existingIndex !== -1) {
-        // If already marked, remove it
-        userData.successDays.splice(existingIndex, 1);
-    } else {
-        // If not marked, add it
-        userData.successDays.push(targetDate);
+    // Remove from both arrays first
+    const successIndex = userData.successDays.findIndex(d => isSameDay(d, targetDate));
+    if (successIndex !== -1) {
+        userData.successDays.splice(successIndex, 1);
     }
+    
+    const missedIndex = userData.missedDays.findIndex(d => isSameDay(d, targetDate));
+    if (missedIndex !== -1) {
+        userData.missedDays.splice(missedIndex, 1);
+    }
+    
+    // Toggle status
+    if (!isSuccess && !isMissed) {
+        // If neither, mark as success
+        userData.successDays.push(targetDate);
+    } else if (isSuccess) {
+        // If was success, mark as missed
+        userData.missedDays.push(targetDate);
+        showModal("You're a pussy, now stop touching yourself");
+    }
+    // If was missed, now it's neither (already removed above)
     
     // Update last updated timestamp
     userData.lastUpdated = new Date();
@@ -201,56 +258,6 @@ function calculateStreak() {
     }
 }
 
-// Mark today as successful
-function markToday() {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    // Check if today is already marked
-    if (isSuccessDay(today)) {
-        alert('Today is already marked as successful!');
-        return;
-    }
-    
-    // Add today to successful days
-    userData.successDays.push(today);
-    userData.lastUpdated = new Date();
-    
-    // Calculate streak
-    calculateStreak();
-    
-    // Save and update UI
-    saveData();
-    updateUI();
-}
-
-// Reset the current streak
-function resetStreak() {
-    if (confirm('Are you sure you want to reset your current streak?')) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        
-        // Remove all dates from current streak
-        let currentDate = new Date(today);
-        while (true) {
-            const index = userData.successDays.findIndex(date => isSameDay(date, currentDate));
-            if (index !== -1) {
-                userData.successDays.splice(index, 1);
-                currentDate.setDate(currentDate.getDate() - 1);
-            } else {
-                break;
-            }
-        }
-        
-        userData.currentStreak = 0;
-        userData.lastUpdated = new Date();
-        
-        // Save and update UI
-        saveData();
-        updateUI();
-    }
-}
-
 // Check for day change
 function checkDayChange() {
     const today = new Date();
@@ -270,10 +277,6 @@ function checkDayChange() {
         saveData();
     }
 }
-
-// Event listeners
-markSuccessBtn.addEventListener('click', markToday);
-resetBtn.addEventListener('click', resetStreak);
 
 // Initialize
 loadData();
